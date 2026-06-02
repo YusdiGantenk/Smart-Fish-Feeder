@@ -18,7 +18,7 @@ const CONFIG = {
     
     // Blynk Configuration
     BLYNK_AUTH_TOKEN: 'wKnMqKdDMW0-yhnLs_pDGbUcdfq2nqcZ',
-    BLYNK_SERVER: 'https://blynk.cloud/external/api',
+    BLYNK_SERVER: 'https://sgp1.blynk.cloud/external/api',
     BLYNK_VPINS: {
         STOCK: 'V0',      // Gauge - Stok Pakan (0-100%)
         TIME: 'V1',       // Label - Waktu WIB
@@ -129,11 +129,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Start polling Blynk data
     STATE.blynkPollInterval = setInterval(pollBlynkData, CONFIG.BLYNK_SEND_INTERVAL);
     
-    // Heartbeat check - jika 15 detik tidak ada data valid dari Blynk, set OFFLINE
+    // Heartbeat check - jika 30 detik tidak ada data valid dari Blynk, set OFFLINE
     setInterval(() => {
         const elapsed = Date.now() - lastHeartbeatTime;
-        if (elapsed > 15000) {
-            console.warn(`Heartbeat timeout! Tidak ada data selama ${Math.round(elapsed/1000)} detik`);
+        if (elapsed > 30000) {
+            console.warn(
+                `Heartbeat timeout! Tidak ada data selama ${
+                    Math.round(elapsed / 1000)
+                } detik`
+            );
             setOnlineStatus(false);
         }
     }, 3000); // Cek setiap 3 detik
@@ -188,8 +192,8 @@ function updateClock() {
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     DOM.dayDisplay.textContent = days[now.getDay()];
     
-    // Update last update time
-    DOM.lastUpdate.textContent = `${hours}:${minutes}:${seconds}`;
+    // Jangan update lastUpdate di sini - hanya saat data baru diterima dari Blynk
+    // DOM.lastUpdate.textContent = `${hours}:${minutes}:${seconds}`;
 }
 
 // ============================================================
@@ -198,77 +202,64 @@ function updateClock() {
 
 async function connectToBlynk() {
     try {
-        console.log('Testing Blynk connection...');
-        
-        // Test connection by reading V0 (stock level)
+        console.log("Connecting to Blynk...");
         const response = await fetch(
             `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`
         );
-        
-        if (response.ok) {
-            console.log('✓ Blynk connection successful');
-            setOnlineStatus(true);
-            STATE.blynkConnected = true;
-            STATE.blynkConnectionAttempts = 0;
-            showToast('Terhubung dengan Blynk', 'success');
-            return true;
-        } else {
+        if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
+        const testData = await response.text();
+        console.log("Blynk Response:", testData);
+        STATE.blynkConnected = true;
+        STATE.blynkConnectionAttempts = 0;
+        lastHeartbeatTime = Date.now();
+        setOnlineStatus(true);
+        showToast("✓ Blynk Connected", "success");
+        return true;
     } catch (error) {
-        console.error('✗ Blynk connection failed:', error);
-        STATE.blynkConnectionAttempts++;
-        
-        if (STATE.blynkConnectionAttempts === 1) {
-            showToast('Mencoba menghubungkan ke Blynk...', 'info');
-        }
-        
-        // Retry connection after 5 seconds
+        console.error("Blynk Connection Failed:", error);
+        STATE.blynkConnected = false;
+        setOnlineStatus(false);
         setTimeout(connectToBlynk, 5000);
         return false;
     }
 }
 
 async function pollBlynkData() {
-    if (!STATE.blynkConnected) return;
-    
+    if (!STATE.blynkConnected) {
+        await connectToBlynk();
+        return;
+    }
     try {
-        // Read V0: Stock Percentage
-        const stockResponse = await fetch(
+        const response = await fetch(
             `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`
         );
-        
-        if (stockResponse.ok) {
-            // Ambil sebagai teks mentah dulu untuk menghindari error format JSON
-            const stockDataText = await stockResponse.text();
-            console.log("Raw Stock Data dari Blynk:", stockDataText);
-            
-            // Bersihkan karakter jika ada tanda kutip atau kurung siku, lalu ubah ke angka
-            const cleanValue = stockDataText.replace(/[\[\]"]/g, '');
-            const stockValue = parseInt(cleanValue);
-            
-            if (!isNaN(stockValue)) {
-                const newStock = Math.max(0, Math.min(100, stockValue));
-                
-                // Tandai heartbeat hanya jika data valid diterima
-                lastHeartbeatTime = Date.now();
-                setOnlineStatus(true);
-                
-                STATE.stockPercentage = newStock;
-                STATE.sensorReady = true;
-                updateStockDisplay();
-                checkStockThreshold();
-                console.log(`Stock updated: ${STATE.stockPercentage}%`);
-            }
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
-        
-        // CATATAN: Jam di web menggunakan waktu browser (WIB = UTC+7)
-        // Tidak mengambil dari V1 karena bisa menyebabkan jam tidak sinkron
-        // updateClock() sudah berjalan tiap 1 detik secara otomatis
-        
+        const rawData = await response.text();
+        const cleanData = rawData.replace(/[\[\]"]/g, '');
+        const stockValue = parseInt(cleanData);
+        if (!isNaN(stockValue)) {
+            STATE.stockPercentage =
+                Math.max(0, Math.min(100, stockValue));
+            
+            // Update lastUpdate hanya saat menerima data baru dari Blynk
+            const now = new Date();
+            DOM.lastUpdate.textContent =
+                `${String(now.getHours()).padStart(2,'0')}:` +
+                `${String(now.getMinutes()).padStart(2,'0')}:` +
+                `${String(now.getSeconds()).padStart(2,'0')}`;
+            
+            lastHeartbeatTime = Date.now();
+            setOnlineStatus(true);
+            STATE.sensorReady = true;
+            updateStockDisplay();
+            checkStockThreshold();
+        }
     } catch (error) {
-        console.error('Error polling Blynk data:', error);
-        // Jika ada error apapun saat polling, anggap koneksi putus
+        console.error("Polling Error:", error);
         STATE.blynkConnected = false;
         setOnlineStatus(false);
         setTimeout(connectToBlynk, 5000);
@@ -276,29 +267,22 @@ async function pollBlynkData() {
 }
 
 async function sendToBlynk(vpin, value) {
-    if (!STATE.blynkConnected) {
-        showToast('⚠️ Belum terhubung dengan Blynk', 'warning');
-        return false;
-    }
-    
-    // Format URL menggunakan /update endpoint yang resmi dan mendukung CORS
-    const url = `${CONFIG.BLYNK_SERVER}/update?token=${CONFIG.BLYNK_AUTH_TOKEN}&${vpin}=${value}`;
-    
     try {
-        const response = await fetch(url, {
-            method: 'GET', // Gunakan GET agar lolos dari blokir CORS browser
-            mode: 'cors'   // Aktifkan mode lintas asal yang aman
-        });
-        
-        if (response.ok) {
-            console.log(`✓ Berhasil update Blynk ${vpin} menjadi: ${value}`);
-            return true;
-        } else {
-            console.warn(`Blynk merespon dengan status: ${response.status}`);
-            return false;
+        const response = await fetch(
+            `${CONFIG.BLYNK_SERVER}/update?token=${CONFIG.BLYNK_AUTH_TOKEN}&${vpin}=${value}`
+        );
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
+        console.log(
+            `Blynk Update Success : ${vpin} = ${value}`
+        );
+        return true;
     } catch (error) {
-        console.error(`Error sending to Blynk ${vpin}:`, error);
+        console.error(
+            `Blynk Update Failed (${vpin})`,
+            error
+        );
         return false;
     }
 }
@@ -720,6 +704,7 @@ function setOnlineStatus(isOnline) {
     STATE.isOnline = isOnline;
     
     if (isOnline) {
+        lastHeartbeatTime = Date.now();
         // Status ONLINE - semua indikator hijau
         if (DOM.statusDot) {
             DOM.statusDot.classList.remove('offline');
@@ -823,6 +808,16 @@ window.FISH_FEEDER = {
         stock: STATE.stockPercentage
     })
 };
+
+window.addEventListener('online', () => {
+    console.log("Internet Connected");
+    connectToBlynk();
+});
+
+window.addEventListener('offline', () => {
+    console.log("Internet Disconnected");
+    setOnlineStatus(false);
+});
 
 console.log('Smart Fish Feeder Dashboard loaded successfully');
 console.log('Blynk Token:', CONFIG.BLYNK_AUTH_TOKEN);
