@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Fish Feeder - Dashboard Monitoring</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>Smart Fish Feeder</h1>
+                <p class="subtitle">Sistem Pemberi Pakan Ikan Otomatis Berbasis ESP32</p>
+            </div>
+            <div class="header-status">
+                <div class="status-indicator" id="statusIndikator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Offline</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard -->
+        <main class="dashboard">
+            <!-- Row 1: Stock & Time -->
+            <div class="grid-container">
+                <!-- Card: Stok Pakan -->
+                <div class="card card-stock">
+                    <div class="card-header">
+                        <h2>Stok Pakan</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="stock-display">
+                            <div class="gauge-container">
+                                <svg class="gauge" viewBox="0 0 200 120">
+                                    <!-- Background arc -->
+                                    <path d="M 30 100 A 70 70 0 0 1 170 100" 
+                                          stroke="#e0e0e0" stroke-width="8" fill="none"/>
+                                    <!-- Filled arc -->
+                                    <path class="gauge-fill" id="gaugeFill"
+                                          d="M 30 100 A 70 70 0 0 1 170 100" 
+                                          stroke="#4CAF50" stroke-width="8" fill="none"
+                                          style="stroke-dasharray: 0; stroke-dashoffset: 0;"/>
+                                    <!-- Needle -->
+                                    <g id="needle">
+                                        <line x1="100" y1="100" x2="100" y2="35" 
+                                              stroke="#333" stroke-width="3"/>
+                                        <circle cx="100" cy="100" r="5" fill="#333"/>
+                                    </g>
+                                </svg>
+                            </div>
+                            <div class="stock-info">
+                                <div class="percentage" id="percentageDisplay">0%</div>
+                                <div class="status-text" id="stockStatus">Membaca...</div>
+                            </div>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                        </div>
+                        <div class="stock-details">
+                            <div class="detail-item">
+                                <span class="label">Level Stok:</span>
+                                <span class="value" id="levelStok">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="label">Terakhir Update:</span>
+                                <span class="value" id="lastUpdate">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card: Waktu Aktual -->
+                <div class="card card-time">
+                    <div class="card-header">
+                        <h2>Waktu Aktual</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="time-display">
+                            <div class="digital-clock" id="digitalClock">00:00:00</div>
+                            <div class="time-zone">WIB</div>
+                        </div>
+                        <div class="time-info">
+                            <div class="info-item">
+                                <span class="label">Tanggal:</span>
+                                <span class="value" id="dateDisplay">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">Hari:</span>
+                                <span class="value" id="dayDisplay">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Jadwal & Control -->
+            <div class="grid-container">
+                <!-- Card: Jadwal Pakan -->
+                <div class="card card-schedule">
+                    <div class="card-header">
+                        <h2>Jadwal Pemberian Pakan</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="schedule-list">
+                            <div class="schedule-item">
+                                <div class="schedule-info">
+                                    <div class="schedule-label">Jadwal Pagi</div>
+                                    <div class="schedule-time">07:00 WIB</div>
+                                </div>
+                                <div class="schedule-status" id="statusPagi">
+                                    <span class="status-badge pending">Menunggu</span>
+                                </div>
+                            </div>
+                            <div class="schedule-item">
+                                <div class="schedule-info">
+                                    <div class="schedule-label">Jadwal Sore</div>
+                                    <div class="schedule-time">16:00 WIB</div>
+                                </div>
+                                <div class="schedule-status" id="statusSore">
+                                    <span class="status-badge pending">Menunggu</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="schedule-info-box">
+                            <p>⚠️ Durasi pemberian: <strong>3 detik</strong> per jadwal</p>
+                            <p>✓ Status otomatis akan memperbarui setelah pakan diberikan</p>
+                        </div>Durasi pemberian: <strong>3 detik</strong> per jadwal</p>
+                            <p>
+                </div>
+
+                <!-- Card: Kontrol Manual -->
+                <div class="card card-control">
+                    <div class="card-header">
+                        <h2>🎮 Kontrol Manual</h2>
+                    </div>
+                    <div cla"card-body">
+                        <div class="control-section">
+                            <p class="control-description">Klik tombol di bawah untuk memberi pakan ikan secara manual:</p>
+                            <button class="btn btn-feed" id="btnBeriPakan">
+                                <span class="btn-text">BERI PAKAN SEKARANG</span>
+                            </button>
+                            <div class="control-info">
+                                <p>Katup servo akan membuka selama 3 detik</p>
+                                <p>Pakan akan jatuh ke dalam kolam</p>
+                                <p>Katup akan menutup otomatis</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 3: Riwayat & Notifikasi -->
+            <div class="grid-container">
+                <!-- Card: Riwayat Pemberian -->
+                <div class="card card-history">
+                    <div class="card-header">
+                        <h2>📝 Riwayat Pemberian Pakan</h2>
+                        <but class="btn-small" id="btnClearHistory">Hapus</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="history-list" id="historyList">
+                            <div class="history-empty">
+                                <p>Belum ada riwayat pemberian pakan</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card: Notifikasi -->
+                <div class="card card-notifications">
+                    <div class="card-header">
+                        <h2>🔔 Notifikasi & Alert</h2>
+                        <but class="btn-small" id="btnClearNotif">Hapus</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="notifications-list" id="notificationsList">
+                            <div class="notification-empty">
+                                <p>Belum ada notifikasi</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 4: Statistik -->
+            <div class="grid-container full-width">
+                <div class="card card-stats">
+                    <div class="card-header">
+                        <h2>📊 Statistik Harian</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-content">
+                                    <div class="stat-label">Total Pemberian</div>
+                                    <div class="stat-value" id="totalFeeding">0x</div>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-content">
+                                    <div class="stat-label">Status Sistem</div>
+                                    <div class="stat-value" id="systemStatus">Offline</div>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-content">
+                                    <div class="stat-label">Koneksi Blynk</div>
+                                    <div class="stat-value" id="blynkStatus">Offline</div>
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-content">
+                                    <div class="stat-label">Sensor Status</div>
+                                    <div class="stat-value" id="sensorStatus">Tidak Terbaca</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <p><strong>Smart Fish Feeder</strong> - Tugas Akhir Yusdhi Hartono (NIM: 241101032)</p>
+                <p>Universitas Nahdlatul Ulama Sunan Giri - 2026</p>
+                <p class="tech-info">Powered by: ESP32 | Blynk IoT | Arduino</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modal: Konfirmasi Pemberian Pakan -->
+    <div class="modal" id="modalKonfirmasi">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Konfirmasi Pemberian Pakan</h3>
+                <button class="modal-close" id="btnCloseModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Apakah Anda yakin ingin memberi pakan ikan sekarang?</p>
+                <div class="modal-details">
+                    <p>⏱️ Katup akan terbuka selama <strong>3 detik</strong></p>
+                    <p>📦 Stok saat ini: <strong id="modalStok">0%</strong></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btnBatalKonfirmasi">Batal</button>
+                <button class="btn btn-primary" id="btnYaKonfirmasi">Ya, Beri Pakan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Pengaturan -->
+    <div class="modal" id="modalSettings">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚙️ Pengaturan</h3>
+                <button class="modal-close" id="btnCloseSettings">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h3>Pengaturan</h3>roup">
+                    <label for="settingsJamPagi">Jadwal Pagi (HH:MM):</label>
+                    <input type="time" id="settingsJamPagi" value="07:00">
+                </div>
+                <div class="settings-group">
+                    <label for="settingsJamSore">Jadwal Sore (HH:MM):</label>
+                    <input type="time" id="settingsJamSore" value="16:00">
+                </div>
+                <div class="settings-group">
+                    <label for="settingsThreshold">Threshold Stok Rendah (%):</label>
+                    <input type="number" id="settingsThreshold" min="0" max="100" value="20">
+                </div>
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="settingsNotif">
+                        Aktifkan notifikasi browser
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btnCloseSettingsBtn">Tutup</button>
+                <button class="btn btn-primary" id="btnSaveSettings">Simpan Pengaturan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
