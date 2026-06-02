@@ -202,7 +202,7 @@ async function connectToBlynk() {
         
         // Test connection by reading V0 (stock level)
         const response = await fetch(
-            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&${CONFIG.BLYNK_VPINS.STOCK}`
+            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`
         );
         
         if (response.ok) {
@@ -235,7 +235,7 @@ async function pollBlynkData() {
     try {
         // Read V0: Stock Percentage
         const stockResponse = await fetch(
-            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&${CONFIG.BLYNK_VPINS.STOCK}`
+            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`
         );
         
         if (stockResponse.ok) {
