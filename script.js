@@ -27,6 +27,11 @@ const CONFIG = {
 };
 
 // ============================================================
+// GLOBAL VARIABLES (Heartbeat System)
+// ============================================================
+let lastHeartbeatTime = Date.now(); // Catat waktu terakhir data diterima dari ESP32
+
+// ============================================================
 // GLOBAL STATE
 // ============================================================
 
@@ -112,17 +117,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Event listeners
     setupEventListeners();
-    checkFeedingSchedule, 1000);
+    
+    // Start intervals
+    setInterval(updateClock, 1000);
+    setInterval(checkFeedingSchedule, 1000);
     
     // Connect to Blynk
     console.log('Attempting to connect to Blynk...');
     connectToBlynk();
     
     // Start polling Blynk data
-    STATE.blynkPollInterval = setInterval(pollBlynkData, CONFIG.BLYNK_SEND_INTERVALout(() => {
-        setOnlineStatus(true);
-        showToast('Sistem terhubung', 'success');
-    }, 1500);
+    STATE.blynkPollInterval = setInterval(pollBlynkData, CONFIG.BLYNK_SEND_INTERVAL);
+    
+    // Heartbeat check - jika 15 detik tidak ada data valid dari Blynk, set OFFLINE
+    setInterval(() => {
+        const elapsed = Date.now() - lastHeartbeatTime;
+        if (elapsed > 15000) {
+            console.warn(`Heartbeat timeout! Tidak ada data selama ${Math.round(elapsed/1000)} detik`);
+            setOnlineStatus(false);
+        }
+    }, 3000); // Cek setiap 3 detik
     
     // Load history from localStorage
     loadFeedingHistory();
@@ -188,7 +202,7 @@ async function connectToBlynk() {
         
         // Test connection by reading V0 (stock level)
         const response = await fetch(
-            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`
+            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&${CONFIG.BLYNK_VPINS.STOCK}`
         );
         
         if (response.ok) {
@@ -221,15 +235,26 @@ async function pollBlynkData() {
     try {
         // Read V0: Stock Percentage
         const stockResponse = await fetch(
-            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`
+            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&${CONFIG.BLYNK_VPINS.STOCK}`
         );
         
         if (stockResponse.ok) {
-            const stockData = await stockResponse.json();
-            const stockValue = parseInt(stockData[0]);
+            // Ambil sebagai teks mentah dulu untuk menghindari error format JSON
+            const stockDataText = await stockResponse.text();
+            console.log("Raw Stock Data dari Blynk:", stockDataText);
+            
+            // Bersihkan karakter jika ada tanda kutip atau kurung siku, lalu ubah ke angka
+            const cleanValue = stockDataText.replace(/[\[\]"]/g, '');
+            const stockValue = parseInt(cleanValue);
             
             if (!isNaN(stockValue)) {
-                STATE.stockPercentage = Math.max(0, Math.min(100, stockValue));
+                const newStock = Math.max(0, Math.min(100, stockValue));
+                
+                // Tandai heartbeat hanya jika data valid diterima
+                lastHeartbeatTime = Date.now();
+                setOnlineStatus(true);
+                
+                STATE.stockPercentage = newStock;
                 STATE.sensorReady = true;
                 updateStockDisplay();
                 checkStockThreshold();
@@ -237,43 +262,40 @@ async function pollBlynkData() {
             }
         }
         
-        // Read V1: Time (optional, we use local time)
-        const timeResponse = await fetch(
-            `${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.TIME}`
-        );
-        
-        if (timeResponse.ok) {
-            const timeData = await timeResponse.json();
-            console.log(`ESP32 Time: ${timeData[0]}`);
-        }
+        // CATATAN: Jam di web menggunakan waktu browser (WIB = UTC+7)
+        // Tidak mengambil dari V1 karena bisa menyebabkan jam tidak sinkron
+        // updateClock() sudah berjalan tiap 1 detik secara otomatis
         
     } catch (error) {
         console.error('Error polling Blynk data:', error);
-        
-        // If error, try to reconnect
-        if (!STATE.blynkConnected) {
-            connectToBlynk();
-        }
+        // Jika ada error apapun saat polling, anggap koneksi putus
+        STATE.blynkConnected = false;
+        setOnlineStatus(false);
+        setTimeout(connectToBlynk, 5000);
     }
 }
 
 async function sendToBlynk(vpin, value) {
     if (!STATE.blynkConnected) {
-        showToast('Belum terhubung dengan Blynk', 'warning');
+        showToast('⚠️ Belum terhubung dengan Blynk', 'warning');
         return false;
     }
     
+    // Format URL menggunakan /update endpoint yang resmi dan mendukung CORS
+    const url = `${CONFIG.BLYNK_SERVER}/update?token=${CONFIG.BLYNK_AUTH_TOKEN}&${vpin}=${value}`;
+    
     try {
-        const response = await fetch(
-            `${CONFIG.BLYNK_SERVER}/put?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${vpin}&value=${value}`,
-            { method: 'PUT' }
-        );
+        const response = await fetch(url, {
+            method: 'GET', // Gunakan GET agar lolos dari blokir CORS browser
+            mode: 'cors'   // Aktifkan mode lintas asal yang aman
+        });
         
         if (response.ok) {
-            console.log(`✓ Sent to Blynk ${vpin}=${value}`);
+            console.log(`✓ Berhasil update Blynk ${vpin} menjadi: ${value}`);
             return true;
         } else {
-            throw new Error(`HTTP ${response.status}`);
+            console.warn(`Blynk merespon dengan status: ${response.status}`);
+            return false;
         }
     } catch (error) {
         console.error(`Error sending to Blynk ${vpin}:`, error);
@@ -346,15 +368,52 @@ function updateProgressColor(percentage) {
 }
 
 function checkStockThreshold() {
-    if (STATE.stockPercentage <= STATE.settings.stockThreshold && 
-        STATE.stockPercentage > 0 &&
-        !STATE.notifications.some(n => n.type === 'stock_low')) {
+    const stock = parseInt(STATE.stockPercentage);
+    
+    // Notifikasi jika stok HABIS (0%)
+    if (stock === 0 && 
+        !STATE.notifications.some(n => n.notifType === 'stock_empty')) {
         
-        const message = `Peringatan: Stok pakan ${STATE.stockPercentage}%. Segera isi ulang!`;
-        addNotification(message, 'warning', 'Stok Rendah');
+        console.log('🚨 Stok habis total!');
+        const message = `🚨 STOK PAKAN HABIS (0%)! Segera isi ulang!`;
+        addNotification(message, 'warning', 'STOK HABIS', 'stock_empty');
+        
+        if (STATE.settings.notificationsEnabled) {
+            showToast(message, 'warning', 5000);
+        }
+        
+        if (DOM.stockStatus) {
+            DOM.stockStatus.style.color = '#F44336';
+            DOM.stockStatus.textContent = '🚨 STOK HABIS!';
+        }
+    }
+    
+    // Notifikasi jika stok di bawah threshold (misal 20%) dan di atas 0
+    if (stock > 0 && stock <= STATE.settings.stockThreshold && 
+        !STATE.notifications.some(n => n.notifType === 'stock_low')) {
+        
+        console.log(`🚨 Stock threshold triggered: ${stock}%`);
+        const message = `⚠️ Peringatan: Stok Pakan KRITIS (${stock}%)! SEGERA ISI ULANG!`;
+        addNotification(message, 'warning', 'STOK RENDAH', 'stock_low');
         
         if (STATE.settings.notificationsEnabled) {
             showToast(message, 'warning');
+        }
+        
+        if (DOM.stockStatus) {
+            DOM.stockStatus.style.color = '#F44336';
+            DOM.stockStatus.textContent = '⚠️ SEGERA ISI ULANG!';
+        }
+    }
+    
+    // Kembalikan status normal jika stok sudah di atas threshold
+    if (stock > STATE.settings.stockThreshold) {
+        // Hapus notifikasi stok rendah dan habis jika stok sudah normal
+        STATE.notifications = STATE.notifications.filter(
+            n => n.notifType !== 'stock_low' && n.notifType !== 'stock_empty'
+        );
+        if (DOM.stockStatus) {
+            DOM.stockStatus.style.color = '';
         }
     }
 }
@@ -381,6 +440,34 @@ function confirmFeeding() {
     performFeeding('Manual (Website)');
 }
 
+async function kirimPakanManual() {
+    try {
+        console.log('Mengirim perintah pemberian pakan manual ke Blynk...');
+        
+        // Mengirim nilai '1' ke V2 untuk memicu servo di ESP32
+        const response = await fetch(
+            `${CONFIG.BLYNK_SERVER}/update?token=${CONFIG.BLYNK_AUTH_TOKEN}&${CONFIG.BLYNK_VPINS.FEEDING}=1`
+        );
+        
+        if (response.ok) {
+            console.log('✓ Perintah pemberian pakan berhasil dikirim');
+            showToast("✓ Pakan berhasil dikirim ke ESP32!", "success");
+            
+            // Kembalikan ke '0' setelah jeda durasi pakan
+            setTimeout(() => {
+                fetch(
+                    `${CONFIG.BLYNK_SERVER}/update?token=${CONFIG.BLYNK_AUTH_TOKEN}&${CONFIG.BLYNK_VPINS.FEEDING}=0`
+                ).catch(e => console.log('Reset V2 tercapai atau sudah auto-reset'));
+            }, CONFIG.FEEDING_DURATION);
+        } else {
+            throw new Error(`HTTP ${response.status}`);
+        }
+    } catch (error) {
+        console.error("✗ Gagal mengirim pakan:", error);
+        showToast("❌ Gagal mengirim pakan: " + error.message, "error");
+    }
+}
+
 async function performFeeding(source) {
     console.log(`Memberi pakan dari: ${source}`);
     
@@ -388,7 +475,7 @@ async function performFeeding(source) {
     const blynkSent = await sendToBlynk(CONFIG.BLYNK_VPINS.FEEDING, 1);
     
     if (!blynkSent && source !== 'Jadwal Pagi' && source !== 'Jadwal Sore') {
-        showToast('Gagal mengirim perintah ke ESP32', 'error');
+        showToast('⚠️ Gagal mengirim perintah ke ESP32', 'error');
         return;
     }
     
@@ -485,7 +572,7 @@ function clearHistory() {
 // NOTIFICATIONS FUNCTIONS
 // ============================================================
 
-function addNotification(message, type = 'info', title = 'Notifikasi') {
+function addNotification(message, type = 'info', title = 'Notifikasi', notifType = null) {
     const now = new Date();
     const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     
@@ -494,6 +581,7 @@ function addNotification(message, type = 'info', title = 'Notifikasi') {
         title: title,
         message: message,
         type: type,
+        notifType: notifType, // untuk filtering (stock_low, stock_empty, dll)
         time: time,
         timestamp: now
     };
@@ -632,25 +720,48 @@ function setOnlineStatus(isOnline) {
     STATE.isOnline = isOnline;
     
     if (isOnline) {
-        DOM.statusDot.classList.add('online');
-        DOM.statusText.textContent = 'Online';
-        DOM.systemStatus.textContent = 'Online';
-        DOM.systemStatus.style.color = 'var(--success-color)';
+        // Status ONLINE - semua indikator hijau
+        if (DOM.statusDot) {
+            DOM.statusDot.classList.remove('offline');
+            DOM.statusDot.classList.add('online');
+            DOM.statusDot.style.backgroundColor = '#4CAF50'; // Hijau
+        }
+        if (DOM.statusText) DOM.statusText.textContent = 'ONLINE';
+        if (DOM.systemStatus) {
+            DOM.systemStatus.textContent = 'Aktif';
+            DOM.systemStatus.style.color = '#4CAF50';
+        }
         STATE.blynkConnected = true;
-        DOM.blynkStatus.textContent = 'Terhubung';
-        DOM.blynkStatus.style.color = 'var(--success-color)';
+        if (DOM.blynkStatus) {
+            DOM.blynkStatus.textContent = 'Terhubung';
+            DOM.blynkStatus.style.color = '#4CAF50';
+        }
         STATE.sensorReady = true;
-        DOM.sensorStatus.textContent = 'Siap';
-        DOM.sensorStatus.style.color = 'var(--success-color)';
+        if (DOM.sensorStatus) {
+            DOM.sensorStatus.textContent = 'Siap';
+            DOM.sensorStatus.style.color = '#4CAF50';
+        }
     } else {
-        DOM.statusDot.classList.remove('online');
-        DOM.statusText.textContent = 'Offline';
-        DOM.systemStatus.textContent = 'Offline';
-        DOM.systemStatus.style.color = 'var(--danger-color)';
-        DOM.blynkStatus.textContent = 'Terputus';
-        DOM.blynkStatus.style.color = 'var(--danger-color)';
-        DOM.sensorStatus.textContent = 'Tidak Terbaca';
-        DOM.sensorStatus.style.color = 'var(--warning-color)';
+        // Status OFFLINE - semua indikator merah
+        if (DOM.statusDot) {
+            DOM.statusDot.classList.remove('online');
+            DOM.statusDot.classList.add('offline');
+            DOM.statusDot.style.backgroundColor = '#f44336'; // Merah
+        }
+        if (DOM.statusText) DOM.statusText.textContent = 'OFFLINE';
+        if (DOM.systemStatus) {
+            DOM.systemStatus.textContent = 'Offline';
+            DOM.systemStatus.style.color = '#f44336';
+        }
+        STATE.blynkConnected = false;
+        if (DOM.blynkStatus) {
+            DOM.blynkStatus.textContent = 'Terputus';
+            DOM.blynkStatus.style.color = '#f44336';
+        }
+        if (DOM.sensorStatus) {
+            DOM.sensorStatus.textContent = 'Tidak Terbaca';
+            DOM.sensorStatus.style.color = '#ff9800';
+        }
     }
 }
 
