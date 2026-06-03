@@ -178,11 +178,26 @@ function setupEventListeners() {
 function updateClock() {
     const now = new Date();
     
-    // Update digital clock
+    // Update digital clock (mengikuti jam perangkat / laptop / HP)
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
     DOM.digitalClock.textContent = `${hours}:${minutes}:${seconds}`;
+    
+    // Update label zona waktu secara dinamis
+    const tzLabel = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const tzOffsetMin = -now.getTimezoneOffset(); // menit dari UTC
+    const tzH = Math.floor(Math.abs(tzOffsetMin) / 60);
+    const tzM = Math.abs(tzOffsetMin) % 60;
+    let tzString = 'UTC' + (tzOffsetMin >= 0 ? '+' : '-') + String(tzH).padStart(2,'0');
+    if (tzM > 0) tzString += ':' + String(tzM).padStart(2,'0');
+    // Tampilkan nama pendek jika diketahui (WIB / WITA / WIT), fallback ke UTC+N
+    const tzShort = tzLabel.includes('Jakarta') || tzLabel.includes('Asia/Jakarta') ? 'WIB'
+                  : tzLabel.includes('Makassar') ? 'WITA'
+                  : tzLabel.includes('Jayapura') ? 'WIT'
+                  : tzString;
+    const tzElem = document.querySelector('.time-zone');
+    if (tzElem) tzElem.textContent = tzShort;
     
     // Update date
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
@@ -191,9 +206,6 @@ function updateClock() {
     // Update day
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     DOM.dayDisplay.textContent = days[now.getDay()];
-    
-    // Jangan update lastUpdate di sini - hanya saat data baru diterima dari Blynk
-    // DOM.lastUpdate.textContent = `${hours}:${minutes}:${seconds}`;
 }
 
 // ============================================================
