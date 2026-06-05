@@ -77,14 +77,16 @@ const DOM = {
     btnBatalKonfirmasi: document.getElementById('btnBatalKonfirmasi'),
     btnYaKonfirmasi: document.getElementById('btnYaKonfirmasi'),
     modalSettings: document.getElementById('modalSettings'),
+    btnOpenSettings: document.getElementById('btnOpenSettings'),
     btnCloseSettings: document.getElementById('btnCloseSettings'),
     btnCloseSettingsBtn: document.getElementById('btnCloseSettingsBtn'),
     btnSaveSettings: document.getElementById('btnSaveSettings'),
     settingsJamPagi: document.getElementById('settingsJamPagi'),
     settingsJamSore: document.getElementById('settingsJamSore'),
     settingsThreshold: document.getElementById('settingsThreshold'),
-    settingsNotif: document.getElementById('settingsNotif'),
     modalStok: document.getElementById('modalStok'),
+    jadwalPagiDisplay: document.getElementById('jadwalPagiDisplay'),
+    jadwalSoreDisplay: document.getElementById('jadwalSoreDisplay'),
 };
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -120,6 +122,7 @@ function setupEventListeners() {
     DOM.btnYaKonfirmasi.addEventListener('click', confirmFeeding);
     DOM.btnClearHistory.addEventListener('click', clearHistory);
     DOM.btnClearNotif.addEventListener('click', clearNotifications);
+    DOM.btnOpenSettings.addEventListener('click', openSettings);
     DOM.btnCloseSettings.addEventListener('click', closeSettings);
     DOM.btnCloseSettingsBtn.addEventListener('click', closeSettings);
     DOM.btnSaveSettings.addEventListener('click', saveSettings);
@@ -219,7 +222,6 @@ async function sendToBlynk(vpin, value) {
 function updateStockDisplay() {
     const percentage = STATE.stockPercentage;
     DOM.percentageDisplay.textContent = `${percentage}%`;
-    DOM.progressFill.style.width = `${percentage}%`;
     updateGauge(percentage);
     
     if (percentage < 0) {
@@ -238,7 +240,9 @@ function updateStockDisplay() {
         DOM.stockStatus.textContent = 'Normal';
         DOM.levelStok.textContent = 'Cukup';
     }
-    updateProgressColor(percentage);
+    // Update gauge color based on stock level
+    const gaugeColor = percentage <= 20 ? '#E74C3C' : percentage <= 50 ? '#E67E22' : '#3498DB';
+    if (DOM.gaugeFill) DOM.gaugeFill.style.stroke = gaugeColor;
 }
 
 function updateGauge(percentage) {
@@ -251,16 +255,6 @@ function updateGauge(percentage) {
     DOM.needle.style.transformOrigin = '100px 100px';
 }
 
-function updateProgressColor(percentage) {
-    const progressFill = DOM.progressFill;
-    if (percentage < 20) {
-        progressFill.style.background = 'var(--color-danger)';
-    } else if (percentage < 50) {
-        progressFill.style.background = 'var(--color-warning)';
-    } else {
-        progressFill.style.background = 'var(--color-success)';
-    }
-}
 
 function checkStockThreshold() {
     const stock = parseInt(STATE.stockPercentage);
@@ -293,6 +287,7 @@ function openFeedingConfirmation() {
     DOM.modalKonfirmasi.classList.add('active');
 }
 
+function openSettings() { updateSettingsUI(); DOM.modalSettings.classList.add('active'); }
 function closeModal() { DOM.modalKonfirmasi.classList.remove('active'); }
 function closeSettings() { DOM.modalSettings.classList.remove('active'); }
 function confirmFeeding() { closeModal(); performFeeding('Manual (Website)'); }
@@ -427,18 +422,27 @@ function saveSettings() {
     STATE.settings.eveningHour = parseInt(DOM.settingsJamSore.value.split(':')[0]);
     STATE.settings.eveningMinute = parseInt(DOM.settingsJamSore.value.split(':')[1]);
     STATE.settings.stockThreshold = parseInt(DOM.settingsThreshold.value);
-    STATE.settings.notificationsEnabled = DOM.settingsNotif.checked;
     
     localStorage.setItem('fishFeederSettings', JSON.stringify(STATE.settings));
+    updateScheduleTimeDisplay();
     closeSettings();
-    showToast('Pengaturan berhasil disimpan', 'success');
+    showToast('✓ Pengaturan berhasil disimpan', 'success');
+}
+
+function updateScheduleTimeDisplay() {
+    if (DOM.jadwalPagiDisplay) {
+        DOM.jadwalPagiDisplay.textContent = `${String(STATE.settings.morningHour).padStart(2,'0')}:${String(STATE.settings.morningMinute).padStart(2,'0')}`;
+    }
+    if (DOM.jadwalSoreDisplay) {
+        DOM.jadwalSoreDisplay.textContent = `${String(STATE.settings.eveningHour).padStart(2,'0')}:${String(STATE.settings.eveningMinute).padStart(2,'0')}`;
+    }
 }
 
 function updateSettingsUI() {
     DOM.settingsJamPagi.value = `${String(STATE.settings.morningHour).padStart(2, '0')}:${String(STATE.settings.morningMinute).padStart(2, '0')}`;
     DOM.settingsJamSore.value = `${String(STATE.settings.eveningHour).padStart(2, '0')}:${String(STATE.settings.eveningMinute).padStart(2, '0')}`;
     DOM.settingsThreshold.value = STATE.settings.stockThreshold;
-    DOM.settingsNotif.checked = STATE.settings.notificationsEnabled;
+    updateScheduleTimeDisplay();
 }
 
 function setOnlineStatus(isOnline) {

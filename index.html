@@ -17,6 +17,7 @@
                 </div>
             </div>
             <div class="header-status">
+                <button class="btn-small" id="btnOpenSettings" style="margin-right:8px;">⚙ Pengaturan</button>
                 <div class="status-indicator" id="statusIndikator">
                     <span class="status-dot" id="statusDot"></span>
                     <span id="statusText">OFFLINE</span>
@@ -90,14 +91,14 @@
                             <div class="schedule-item">
                                 <div>
                                     <div class="schedule-label">Pagi</div>
-                                    <div class="schedule-time">07:00</div>
+                                    <div class="schedule-time" id="jadwalPagiDisplay">07:00</div>
                                 </div>
                                 <div id="statusPagi"><span class="status-badge pending">Wait</span></div>
                             </div>
                             <div class="schedule-item">
                                 <div>
                                     <div class="schedule-label">Sore</div>
-                                    <div class="schedule-time">16:00</div>
+                                    <div class="schedule-time" id="jadwalSoreDisplay">16:00</div>
                                 </div>
                                 <div id="statusSore"><span class="status-badge pending">Wait</span></div>
                             </div>
@@ -185,7 +186,7 @@
     <div class="modal" id="modalKonfirmasi">
         <div class="modal-content">
             <div class="modal-header"><h3>Konfirmasi</h3><button class="modal-close" id="btnCloseModal">&times;</button></div>
-            <div class="modal-body"><p>Putar servo pakan manual sekarang?</p></div>
+            <div class="modal-body"><p>Putar servo pakan manual sekarang?</p><p style="margin-top:6px;font-size:11px;color:var(--text-sub);">Stok saat ini: <strong id="modalStok">-</strong></p></div>
             <div class="modal-footer"><button class="btn btn-secondary" id="btnBatalKonfirmasi">Batal</button><button class="btn btn-primary" id="btnYaKonfirmasi">Eksekusi</button></div>
         </div>
     </div>
@@ -195,7 +196,8 @@
             <div class="modal-body">
                 <div class="settings-group"><label>Sesi Pagi:</label><input type="time" id="settingsJamPagi" value="07:00"></div>
                 <div class="settings-group"><label>Sesi Sore:</label><input type="time" id="settingsJamSore" value="16:00"></div>
-                <div class="settings-group"><label>Batas Kritis Stok (%):</label><input type="number" id="settingsThreshold" value="20"></div>
+                <div class="settings-group"><label>Batas Kritis Stok (%):</label><input type="number" id="settingsThreshold" value="20" min="5" max="50"></div>
+                <p style="font-size:10px;color:var(--text-sub);margin-top:4px;">⚠ Perubahan jadwal hanya berlaku di dashboard web. Untuk mengubah jadwal di ESP32, edit konstanta <code>JAM_PAGI</code> / <code>JAM_SORE</code> di kode Arduino.</p>
             </div>
             <div class="modal-footer"><button class="btn btn-secondary" id="btnCloseSettingsBtn">Batal</button><button class="btn btn-primary" id="btnSaveSettings">Simpan</button></div>
         </div>
