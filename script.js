@@ -159,15 +159,29 @@ function updateClock() {
 async function connectToBlynk() {
     try {
         console.log("Connecting to Blynk...");
+        
+        // Periksa apakah hardware benar-benar online
+        const statusResponse = await fetch(`${CONFIG.BLYNK_SERVER}/isHardwareConnected?token=${CONFIG.BLYNK_AUTH_TOKEN}`);
+        const isHardwareConnected = (await statusResponse.text()).trim() === 'true';
+        
         const response = await fetch(`${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
         const testData = await response.text();
         console.log("Blynk Response:", testData);
+        
         STATE.blynkConnected = true;
         STATE.blynkConnectionAttempts = 0;
-        lastHeartbeatTime = Date.now();
-        setOnlineStatus(true);
-        showToast("✓ Blynk Connected", "success");
+        
+        if (isHardwareConnected) {
+            lastHeartbeatTime = Date.now();
+            setOnlineStatus(true);
+            showToast("✓ Blynk Connected", "success");
+        } else {
+            setOnlineStatus(false);
+            console.warn("Blynk Server OK, tapi ESP32 sedang OFFLINE");
+        }
+        
         return true;
     } catch (error) {
         console.error("Blynk Connection Failed:", error);
@@ -184,6 +198,15 @@ async function pollBlynkData() {
         return;
     }
     try {
+        // Cek status hardware terlebih dahulu
+        const statusResponse = await fetch(`${CONFIG.BLYNK_SERVER}/isHardwareConnected?token=${CONFIG.BLYNK_AUTH_TOKEN}`);
+        const isHardwareConnected = (await statusResponse.text()).trim() === 'true';
+        
+        if (!isHardwareConnected) {
+            setOnlineStatus(false);
+            return;
+        }
+
         const response = await fetch(`${CONFIG.BLYNK_SERVER}/get?token=${CONFIG.BLYNK_AUTH_TOKEN}&pin=${CONFIG.BLYNK_VPINS.STOCK}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const rawData = await response.text();
